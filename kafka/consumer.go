@@ -1,4 +1,4 @@
-package kafkahelpers;
+package kafkahelpers
 
 import (
 	"context"
@@ -10,42 +10,42 @@ import (
 )
 
 // Handler function for processing messages. Return true to continue processing, false to stop processing
-type ProcessMessageHandler func(message *Message) bool;
+type ProcessMessageHandler func(message *Message) bool
 
 // Decodes messages for a specific recipient and executes callback function
 // Return true from handler function to continue processing, false to stop processing
 func ProcessMessages(recipientId string, reader *kafka.Reader, messageHandler ProcessMessageHandler) error {
-  for {
-    m, err := reader.ReadMessage(context.Background())
-    if err != nil {
-      fmt.Printf("Failed to read message: %v\n", err)
-      return err;
-    }
+	for {
+		m, err := reader.ReadMessage(context.Background())
+		if err != nil {
+			fmt.Printf("Failed to read message: %v\n", err)
+			return err
+		}
 
-    // Use the key to determine if the message is for the recipient
-    if string(m.Key) != recipientId {
-      continue;
-    }
+		// Use the key to determine if the message is for the recipient
+		if string(m.Key) != recipientId {
+			continue
+		}
 
-    // Turn m into Message struct
-    message := &Message{}
-    err = json.Unmarshal(m.Value, message)
-    if err != nil {
-      return err;
-    }
+		// Turn m into Message struct
+		message := &Message{}
+		err = json.Unmarshal(m.Value, message)
+		if err != nil {
+			return err
+		}
 
-    ok := messageHandler(message);
-    if ok == false {
-      break;
-    }
-  }
+		ok := messageHandler(message)
+		if ok == false {
+			break
+		}
+	}
 
-  if err := reader.Close(); err != nil {
-    fmt.Printf("Failed to close reader: %v\n", err)
-    return err;
-  }
+	if err := reader.Close(); err != nil {
+		fmt.Printf("Failed to close reader: %v\n", err)
+		return err
+	}
 
-  return nil;
+	return nil
 }
 
 // Create an Kafka consumer for a specific recipient

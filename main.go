@@ -20,20 +20,20 @@ import (
 )
 
 type Message struct {
-	Id          string    `db:"id"`
-	SenderId    string    `db:"sender_id"`
+	Id             string    `db:"id"`
+	SenderId       string    `db:"sender_id"`
 	ConversationId string    `db:"conversation_id"`
-	Message     string    `db:"message"`
-	CreatedAt   time.Time `db:"created_at"`
+	Message        string    `db:"message"`
+	CreatedAt      time.Time `db:"created_at"`
 }
 
 type Conversation struct {
-  Id        string    `db:"id"`
+	Id string `db:"id"`
 }
 
 type ConversationMember struct {
-  ConversationId string    `db:"conversation_id"`
-  UserId         string    `db:"user_id"`
+	ConversationId string `db:"conversation_id"`
+	UserId         string `db:"user_id"`
 }
 
 func main() {
@@ -131,85 +131,85 @@ func main() {
 
 	api := app.Group("/api")
 
-  type PostMessageRequest struct {
-    ConversationId string `form:"conversation_id" validate:"required,len=26"`
-    Message string `form:"message" validate:"required"`
-  }
+	type PostMessageRequest struct {
+		ConversationId string `form:"conversation_id" validate:"required,len=26"`
+		Message        string `form:"message" validate:"required"`
+	}
 
-  api.Post("/messages", func(c *fiber.Ctx) error {
+	api.Post("/messages", func(c *fiber.Ctx) error {
 		c.Accepts("multipart/form-data")
-    userId := c.Locals("user-id").(string);
+		userId := c.Locals("user-id").(string)
 
-    // Create post message request from form data
-    postMessageRequest := &PostMessageRequest{};
-    if err := c.BodyParser(postMessageRequest); err != nil {
-      return c.Status(fiber.StatusBadRequest).Send([]byte("Could not parse message"))
-    }
+		// Create post message request from form data
+		postMessageRequest := &PostMessageRequest{}
+		if err := c.BodyParser(postMessageRequest); err != nil {
+			return c.Status(fiber.StatusBadRequest).Send([]byte("Could not parse message"))
+		}
 
-    // Validate post message request
-    if err := utils.ValidateStruct(postMessageRequest); err != nil {
-      return c.Status(fiber.StatusBadRequest).Send([]byte("Invalid Message"))
-    }
+		// Validate post message request
+		if err := utils.ValidateStruct(postMessageRequest); err != nil {
+			return c.Status(fiber.StatusBadRequest).Send([]byte("Invalid Message"))
+		}
 
-    // Check if conversation exists and the user is a part of it
-    isPartOfConversation := 0;
-    err := db.Get(
-      &isPartOfConversation,
-      "SELECT COUNT(*) FROM ConversationMember WHERE conversation_id = ? AND user_id = ?",
-      postMessageRequest.ConversationId,
-      userId,
-    )
+		// Check if conversation exists and the user is a part of it
+		isPartOfConversation := 0
+		err := db.Get(
+			&isPartOfConversation,
+			"SELECT COUNT(*) FROM ConversationMember WHERE conversation_id = ? AND user_id = ?",
+			postMessageRequest.ConversationId,
+			userId,
+		)
 
-    if err != nil {
-      fmt.Printf("Failed to check if user is part of conversation: %s\n", err)
-      return c.Status(fiber.StatusInternalServerError).Send([]byte("An unknown error occured. Please try again later"))
-    }
+		if err != nil {
+			fmt.Printf("Failed to check if user is part of conversation: %s\n", err)
+			return c.Status(fiber.StatusInternalServerError).Send([]byte("An unknown error occured. Please try again later"))
+		}
 
-    if isPartOfConversation == 0 {
-      return c.Status(fiber.StatusForbidden).Send([]byte("This conversation either does not exist or you are not a part of it"))
-    }
+		if isPartOfConversation == 0 {
+			return c.Status(fiber.StatusForbidden).Send([]byte("This conversation either does not exist or you are not a part of it"))
+		}
 
-    messageId := ulid.Make().String()
+		messageId := ulid.Make().String()
 
-    // Create message
-    _, err = db.Exec(
-      "INSERT INTO Message (id, sender_id, conversation_id, message) VALUES (?, ?, ?, ?)",
-      messageId,
-      userId,
-      postMessageRequest.ConversationId,
-      postMessageRequest.Message,
-    )
-    
-    if err != nil {
-      fmt.Printf("Failed to create message: %s\n", err)
-      return c.Status(fiber.StatusInternalServerError).Send([]byte("Failed to send message. Please try again later"));
-    }
+		// Create message
+		_, err = db.Exec(
+			"INSERT INTO Message (id, sender_id, conversation_id, message) VALUES (?, ?, ?, ?)",
+			messageId,
+			userId,
+			postMessageRequest.ConversationId,
+			postMessageRequest.Message,
+		)
 
-    // Send message to Kafka
-    producer := kafkahelpers.CreateProducer(postMessageRequest.ConversationId);
-    err = kafkahelpers.PostMessage(
-      producer,
-      &kafkahelpers.Message{
-        From: userId,
-        To: postMessageRequest.ConversationId,
-        Message: postMessageRequest.Message,
-      },
-    );
+		if err != nil {
+			fmt.Printf("Failed to create message: %s\n", err)
+			return c.Status(fiber.StatusInternalServerError).Send([]byte("Failed to send message. Please try again later"))
+		}
 
-    // Rollback message creation if cannot send to Kafka
-    if err != nil {
-      _, err = db.Exec(
-        "DELETE FROM Message WHERE id = ?",
-        messageId,
-      )
-      return c.Status(fiber.StatusInternalServerError).Send([]byte("Failed to send message. Please try again later"));
-    }
+		// Send message to Kafka
+		producer := kafkahelpers.CreateProducer(postMessageRequest.ConversationId)
+		err = kafkahelpers.PostMessage(
+			producer,
+			&kafkahelpers.Message{
+				From:    userId,
+				To:      postMessageRequest.ConversationId,
+				Message: postMessageRequest.Message,
+			},
+		)
 
-    return c.Status(201).Render("app/message", fiber.Map{
-      "content": postMessageRequest.Message,
-      "sender": c.Locals("user-display-name"),
-    })
-  });
+		// Rollback message creation if cannot send to Kafka
+		if err != nil {
+			_, err = db.Exec(
+				"DELETE FROM Message WHERE id = ?",
+				messageId,
+			)
+			return c.Status(fiber.StatusInternalServerError).Send([]byte("Failed to send message. Please try again later"))
+		}
+
+		return c.Status(201).Render("app/message", fiber.Map{
+			"content": postMessageRequest.Message,
+			"sender":  c.Locals("user-display-name"),
+		})
+	})
 
 	log.Fatal(app.Listen(":4872"))
 }
