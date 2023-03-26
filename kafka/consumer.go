@@ -1,4 +1,4 @@
-package kafka
+package kafkahelpers;
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func ProcessMessages(recipientId string, reader *kafka.Reader, messageHandler Pr
     }
 
     ok := messageHandler(message);
-    if ok == false { {
+    if ok == false {
       break;
     }
   }

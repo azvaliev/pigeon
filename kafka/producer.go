@@ -1,4 +1,4 @@
-package kafka
+package kafkahelpers;
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func PostMessage(producer *kafka.Writer, message *Message) error {
 }
 
 // Create an Kafka producer for a specific conversation
-func CreateProducer(recipientId string) *kafka.Writer {
+func CreateProducer(conversationId string) *kafka.Writer {
 	kafkaBroker, kafkaTopic := os.Getenv("KAFKA_BROKER"), os.Getenv("KAFKA_TOPIC")
 
   dialer := GetKafkaDialer();

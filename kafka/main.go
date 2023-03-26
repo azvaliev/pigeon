@@ -1,4 +1,4 @@
-package kafka
+package kafkahelpers;
 
 import (
 	"crypto/tls"
@@ -69,6 +69,7 @@ func ULIDPartioner(recipientId string, numPartions int) (*int, error) {
 	}
 
 	recipientUlidTimestamp := int(recipientUlid.Time())
+  recipientPartition := recipientUlidTimestamp % numPartions
 
-	return &recipientUlidTimestamp, nil
+	return &recipientPartition, nil
 }
