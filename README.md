@@ -6,7 +6,7 @@ MPA Messaging App written in Go. Just for fun. GFMM Stack 😉
 ## Getting Started
 
 ### Requirements
-- [Go 1.7](https://go.dev) - Unsure if newer versions will work, using V2 Go Modules
+- [Go 1.19](https://go.dev) - Unsure if newer versions will work, using V2 Go Modules
 - [Minio](https://github.com/minio/minio) - local S3
 - [Air](https://github.com/cosmtrek/air) - hot reload
 - [Docker, docker compose](https://www.docker.com/) - MySQL
