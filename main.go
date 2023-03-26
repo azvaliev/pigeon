@@ -7,10 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/azvaliev/pigeon/v2/utils"
 	"github.com/azvaliev/pigeon/v2/routes"
+	"github.com/azvaliev/pigeon/v2/utils"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/template/mustache"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
@@ -55,11 +56,34 @@ func main() {
 		Views:             engine,
 	})
 
+	app.Use(compress.New())
+
 	routes.AuthRoutes(app.Group("/auth"), db)
 
-  app.Get("/", func(c *fiber.Ctx) error {
-    return c.Send([]byte("Home Page"))
-  })
+	// Authenticate user and set user data to locals
+	app.Use(func(c *fiber.Ctx) error {
+		jwtCookie := c.Cookies(utils.AUTH_TOKEN_JWT_COOKIE_NAME)
+		if jwtCookie == "" {
+			return c.Redirect("/auth", fiber.StatusSeeOther)
+		}
+
+		user, err := utils.VerifyJWTCookie(jwtCookie)
+		if err != nil {
+			return c.Redirect("/auth", fiber.StatusSeeOther)
+		}
+
+		c.Locals("user-id", user.Id)
+		c.Locals("user-email", user.Email)
+		c.Locals("user-username", user.Username)
+		c.Locals("user-display-name", user.DisplayName)
+		c.Locals("user-avatar", user.Avatar)
+
+		return c.Next()
+	})
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Send([]byte("Home Page"))
+	})
 
 	api := app.Group("/api")
 
@@ -98,4 +122,3 @@ func main() {
 
 	log.Fatal(app.Listen(":4872"))
 }
-

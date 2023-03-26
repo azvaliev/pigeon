@@ -15,12 +15,12 @@ func CreateS3Uploader() (*s3manager.Uploader, error) {
 		),
 	})
 
-  if err != nil {
-    return nil, err;
-  }
+	if err != nil {
+		return nil, err
+	}
 
 	// create an uploader
 	uploader := s3manager.NewUploader(sess)
 
-  return uploader, nil;
+	return uploader, nil
 }
