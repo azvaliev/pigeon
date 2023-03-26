@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"mime/multipart"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/azvaliev/pigeon/v2/utils"
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/jmoiron/sqlx"
 	"github.com/oklog/ulid/v2"
 	"golang.org/x/oauth2"
@@ -116,7 +118,7 @@ func AuthRoutes(router fiber.Router, db *sqlx.DB) {
 		}
 
 		// Create temporary registering token & send user to register
-		jwtCookie, err := utils.CreateRegisteringJWT(userData)
+		jwtCookie, err := CreateRegisteringJWT(userData)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).Send([]byte(err.Error()))
 		}
@@ -151,7 +153,7 @@ func AuthRoutes(router fiber.Router, db *sqlx.DB) {
 			return c.Status(fiber.StatusBadRequest).JSON(err)
 		}
 
-		registerDataJwtCookie := c.Cookies(utils.REGISTERING_JWT_COOKIE_NAME)
+		registerDataJwtCookie := c.Cookies(REGISTERING_JWT_COOKIE_NAME)
 		if registerDataJwtCookie == "" {
 			c.Status(fiber.StatusSeeOther)
 			c.Response().Header.Add("Location", "/auth")
@@ -159,7 +161,7 @@ func AuthRoutes(router fiber.Router, db *sqlx.DB) {
 		}
 
 		// Decode JWT and make sure it is matching with form data
-		jwtData, err := utils.DecodeRegisteringJWT(registerDataJwtCookie)
+		jwtData, err := DecodeRegisteringJWT(registerDataJwtCookie)
 
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).Send([]byte(err.Error()))
@@ -231,3 +233,59 @@ func AuthRoutes(router fiber.Router, db *sqlx.DB) {
 		return c.Send(nil)
 	})
 }
+
+const REGISTERING_JWT_COOKIE_NAME = "registering-data"
+
+type RegisteringJWTClaims struct {
+	UserData utils.GithubUserData `json:"user_data"`
+	jwt.RegisteredClaims
+}
+
+func CreateRegisteringJWT(githubUserData *utils.GithubUserData) (*fiber.Cookie, error) {
+	claims := RegisteringJWTClaims{
+		*githubUserData,
+		jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(20 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "pigeon-api",
+		},
+	}
+
+	signingKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(os.Getenv("JWT_SECRET_KEY")))
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tokenString, err := token.SignedString(signingKey)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &fiber.Cookie{
+		Name:     REGISTERING_JWT_COOKIE_NAME,
+		Value:    tokenString,
+		Path:     "/",
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+		MaxAge:   utils.HOUR_IN_SECONDS * (1 / 3),
+	}, nil
+}
+
+func DecodeRegisteringJWT(cookie string) (*utils.GithubUserData, error) {
+	token, err := jwt.ParseWithClaims(cookie, &RegisteringJWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwt.ParseRSAPublicKeyFromPEM([]byte(os.Getenv("JWT_PUBLIC_KEY")))
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	claims, ok := token.Claims.(*RegisteringJWTClaims)
+	if !ok {
+		return nil, err
+	}
+
+	return &claims.UserData, nil
+}
+

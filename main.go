@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/azvaliev/pigeon/v2/routes"
 	"github.com/azvaliev/pigeon/v2/utils"
@@ -17,22 +16,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Message struct {
-	Id             string    `db:"id"`
-	SenderId       string    `db:"sender_id"`
-	ConversationId string    `db:"conversation_id"`
-	Message        string    `db:"message"`
-	CreatedAt      time.Time `db:"created_at"`
-}
-
-type Conversation struct {
-	Id string `db:"id"`
-}
-
-type ConversationMember struct {
-	ConversationId string `db:"conversation_id"`
-	UserId         string `db:"user_id"`
-}
 
 func main() {
 	err := godotenv.Load()
