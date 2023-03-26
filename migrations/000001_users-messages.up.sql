@@ -9,10 +9,10 @@ CREATE TABLE IF NOT EXISTS User (
 CREATE TABLE IF NOT EXISTS Message (
   id char(26) PRIMARY KEY NOT NULL,
   sender_id char(26) NOT NULL,
-  recipient_id char(26) NOT NULL,
+  conversation_id char(26) NOT NULL,
   message TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-  INDEX sender_id_idx(sender_id),
-  INDEX recipient_id_idx(recipient_id)
+  INDEX (conversation_id),
+  INDEX (created_at)
 );

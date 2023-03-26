@@ -1,13 +1,39 @@
 package kafka
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 )
 
-// Create an Kafka producer for a specific recipient
+func PostMessage(producer *kafka.Writer, message *Message) error {
+  encodedMessage, err := json.Marshal(message)
+  if err != nil {
+    return err;
+  }
+
+  // Create a new message to write to kafka
+  kafkaMessage := kafka.Message{
+    Key:   []byte(message.To),
+    Value: []byte(
+      // convert struct into JSON binary
+      encodedMessage,
+    ),
+  }
+
+  // Write messages to topic (asynchronously)
+  err = producer.WriteMessages(context.Background(), kafkaMessage)
+  if err != nil {
+    return err;
+  }
+
+  return nil;
+}
+
+// Create an Kafka producer for a specific conversation
 func CreateProducer(recipientId string) *kafka.Writer {
 	kafkaBroker, kafkaTopic := os.Getenv("KAFKA_BROKER"), os.Getenv("KAFKA_TOPIC")
 
@@ -20,7 +46,7 @@ func CreateProducer(recipientId string) *kafka.Writer {
 		Balancer:               ULIDBalancer,
 		MaxAttempts:            10,
 		WriteTimeout:           10 * time.Second,
-		Async:                  false,
+		Async:                  true,
 		AllowAutoTopicCreation: true,
 		Logger:                 kafka.LoggerFunc(KafkaLogger),
 		ErrorLogger:            kafka.LoggerFunc(KafkaLogger),
