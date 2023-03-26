@@ -16,7 +16,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-
 func main() {
 	err := godotenv.Load()
 
@@ -113,6 +112,7 @@ func main() {
 	api := app.Group("/api")
 
 	routes.MessagesRoutes(api, db)
+	routes.EventsRoutes(api, db)
 
 	log.Fatal(app.Listen(":4872"))
 }

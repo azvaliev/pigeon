@@ -288,4 +288,3 @@ func DecodeRegisteringJWT(cookie string) (*utils.GithubUserData, error) {
 
 	return &claims.UserData, nil
 }
-
