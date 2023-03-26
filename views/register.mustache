@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Pigeon - Register</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@1.*/css/pico.min.css">
+  </head>
+  <body>
+    <form action="/auth/register" method="POST" enctype="multipart/form-data">
+      <div class="grid">
+        <hgroup>
+          <h1>Sign Up</h1>
+          <h2>Register for a new account</h2>
+        </hgroup>
+        <div class="form-group">
+          <input
+            type="file"
+            name="avatar"
+            id="avatar"
+            accept="image/png, image/jpeg"
+          >
+          <div id="avatar-preview">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-camera"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <img src="{{Avatar}}" alt="Avatar Preview" >
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <label for="username">
+          Username
+          <input
+            type="text"
+            name="username"
+            id="username"
+            placeholder="Username"
+            minlength="3"
+            maxlength="320"
+            pattern="^[a-zA-Z0-9_\-\.]+$"
+            required
+          >
+        </label>
+        <label for="display_name">
+          Display Name
+          <input
+            type="text"
+            name="display_name"
+            id="display_name"
+            placeholder="Display Name"
+            minlength="1"
+            maxlength="320"
+            pattern="^[a-zA-Z0-9 ]+$"
+            required
+          >
+        </label>
+      </div>
+      <label for="email" data-tooltip="Sign in with a different Github account to change your email">
+        Email
+        <input
+          type="email"
+          name="email"
+          id="email"
+          placeholder="Email"
+          value="{{Email}}"
+          min="4"
+          max="320"
+          readonly
+        >
+      </label>
+      <button type="submit">Submit</button>
+    </main>
+  </body>
+  <style>
+    html, body {
+      height: 100%;
+    }
+    body {
+      display: grid;
+      place-items: center;
+    }
+    form {
+      width: 80%;
+    }
+    form > div:first-child {
+      grid-template-columns: repeat(auto-fit,minmax(0%,1fr));
+    }
+    label[for="email"] {
+      border-bottom: none;
+    }
+    input[type="email"] {
+      --background-color: var(--form-element-disabled-background-color);
+      --border-color: var(--form-element-disabled-border-color);
+      opacity: var(--form-element-disabled-opacity);
+      pointer-events: none;
+    }
+
+    /* Avatar Preview */
+    input[type="file"] {
+      display: none;
+    }
+    #avatar-preview {
+      width: 100px;
+      height: 100px;
+      float: right;
+      position: relative;
+    }
+    #avatar-preview svg {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      fill: transparent;
+      transition: 100ms fill ease;
+      z-index: -1;
+    }
+    #avatar-preview:hover svg,
+    #avatar-preview svg:hover {
+      z-index: 1;
+      fill: transparent;
+      stroke: #eee;
+    }
+    #avatar-preview img {
+      transition: 100ms filter ease;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+    #avatar-preview:hover img {
+      filter: grayscale(30%) brightness(0.5);
+      z-index: 0;
+    }
+  </style>
+  <script async defer>
+    /* Make it so when new avatar is selected, it is previewed */
+    const avatarInput = document.getElementById('avatar');
+    const avatarPreviewContainer = document.getElementById('avatar-preview');
+    const avatarPreviewImage = avatarPreviewContainer.querySelector('img');
+
+    avatarPreviewContainer.addEventListener('click', () => {
+      avatarInput.click();
+    });
+
+    avatarInput.addEventListener('change', () => {
+      const file = avatarInput.files[0];
+      if (file) {
+        avatarPreviewImage.src = URL.createObjectURL(file);
+      }
+    });
+
+    /* Check username validity */
+    let usernameIsTaken = false;
+
+    const usernameInput = document.getElementById('username');
+    usernameInput.addEventListener('invalid', (e) => {
+      if (usernameIsTaken) {
+        e.target.setCustomValidity('Username is already taken');
+        return;
+      }
+
+      if (e.target.validity.valueMissing) {
+        e.target.setCustomValidity('Username is required');
+      } else if (e.target.validity.tooShort) {
+        e.target.setCustomValidity('Username must be at least 3 characters');
+      } else if (e.target.validity.tooLong) {
+        e.target.setCustomValidity('Username must be at most 320 characters');
+      } else if (e.target.validity.patternMismatch) {
+        e.target.setCustomValidity('Username must only contain letters, numbers, underscores, dashes, and periods');  
+      } else {
+        e.target.setCustomValidity('');
+      }
+      e.target.setAttribute('aria-invalid', 'true');
+    });
+
+    let debounceCallback = () => {};
+    
+    usernameInput.addEventListener('input', (e) => {
+      debounceCallback();
+
+      e.target.setCustomValidity('');
+      if (e.target.validity.valid) {
+        e.target.setAttribute('aria-invalid', 'false');
+      } else {
+        e.target.setAttribute('aria-invalid', 'true');
+      }
+
+      if (e.target.value.length < 3) {
+        return;
+      }
+
+      let abortController = new AbortController();
+      let debounceCheckValidity = setTimeout(() => {
+        checkIfUsernameTaken(e.target.value, abortController);
+      }, 200);
+
+      debounceCallback =  () => {
+        clearTimeout(debounceCheckValidity);
+        abortController.abort();
+      }
+    });
+
+    function checkIfUsernameTaken(username, abortController = new AbortController()) {
+      return fetch(`/api/users?username=${username}`, {signal:  abortController.signal})
+        .then(response => {
+          if (response.status !== 404) {
+            usernameIsTaken = true;
+            usernameInput.setCustomValidity('Username is already taken');
+            usernameInput.setAttribute('aria-invalid', 'true');
+            return true;
+          } else {
+            usernameIsTaken = false;
+            return false;
+          }
+        })
+    }
+
+    // Check display name validity
+    const displayNameInput = document.getElementById('display_name');
+    displayNameInput.addEventListener('invalid', (e) => {
+      if (e.target.validity.valueMissing) {
+        e.target.setCustomValidity('Display name is required');
+      } else if (e.target.validity.tooShort) {
+        e.target.setCustomValidity('Display name must be at least 2 characters');
+      } else if (e.target.validity.tooLong) {
+        e.target.setCustomValidity('Display name must be at most 320 characters');
+      } else if (e.target.validity.patternMismatch) {
+        e.target.setCustomValidity('Display name must only contain letters, numbers, and spaces');  
+      } else {
+        e.target.setCustomValidity('');
+      }
+      e.target.setAttribute('aria-invalid', 'true');
+    });
+
+    displayNameInput.addEventListener('input', (e) => {
+      const validityWithoutCustomError = [
+        e.target.validity.valueMissing,
+        e.target.validity.tooShort,
+        e.target.validity.tooLong,
+        e.target.validity.patternMismatch
+      ];
+
+      if (e.target.validity.valid || validityWithoutCustomError.every(v => v === false)) {
+        e.target.setCustomValidity('');
+        e.target.setAttribute('aria-invalid', 'false');
+      }
+      else {
+        e.target.setAttribute('aria-invalid', 'true');
+      }
+    });
+
+    // On submit, double check username availability
+    const form = document.querySelector('form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const usernameUnavailable = await checkIfUsernameTaken(usernameInput.value);
+      if (usernameUnavailable) {
+        return;
+      }
+
+      if (usernameInput.validity.valid && displayNameInput.validity.valid) {
+        form.submit();
+      }
+    });
+  </script>
+</html>

@@ -1,0 +1,2 @@
+DROP TABLE Message;
+DROP TABLE User;
