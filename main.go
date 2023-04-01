@@ -96,6 +96,12 @@ func main() {
 			return c.Redirect("/auth", fiber.StatusSeeOther)
 		}
 
+		c.Context().SetUserValue("user-id", user.Id)
+		c.Context().SetUserValue("user-email", user.Email)
+		c.Context().SetUserValue("user-username", user.Username)
+		c.Context().SetUserValue("user-display-name", user.DisplayName)
+		c.Context().SetUserValue("user-avatar", user.Avatar)
+
 		c.Locals("user-id", user.Id)
 		c.Locals("user-email", user.Email)
 		c.Locals("user-username", user.Username)

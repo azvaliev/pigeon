@@ -3,30 +3,37 @@ package routes
 import (
 	"context"
 	"fmt"
-	"log"
+	"net/http"
 	"sync"
-
-	"github.com/gofiber/fiber/v2"
-	"github.com/jmoiron/sqlx"
 
 	"github.com/azvaliev/pigeon/v2/kafka"
 	"github.com/azvaliev/pigeon/v2/utils"
+	"github.com/gofiber/adaptor/v2"
+	"github.com/gofiber/fiber/v2"
+	"github.com/jmoiron/sqlx"
 )
 
 func EventsRoutes(api fiber.Router, db *sqlx.DB) {
-	api.Get("/events", func(c *fiber.Ctx) error {
+	api.Get("/events", adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println(r.Context().Value("user-id"))
+
 		// Determine all conversations user is part of
 		conversations := &[]utils.Conversation{}
-		err := db.Select(conversations, "SELECT conversation_id as id FROM ConversationMember WHERE user_id = ?", c.Locals("user-id"))
+		err := db.Select(
+			conversations,
+			"SELECT conversation_id as id FROM ConversationMember WHERE user_id = ?",
+			r.Context().Value("user-id"),
+		)
 
 		if err != nil {
-			return c.Status(500).Send(nil)
+			w.WriteHeader(500)
+			return
 		}
 
 		// Send SSE headers
-		c.Set("Content-Type", "text/event-stream")
-		c.Set("Cache-Control", "no-cache")
-		c.Set("Connection", "keep-alive")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
 
 		conversationGroup := &sync.WaitGroup{}
 		conversationGroup.Add(len(*conversations))
@@ -57,12 +64,13 @@ func EventsRoutes(api fiber.Router, db *sqlx.DB) {
 
 				// Process conversation messages
 				err = kafkahelpers.ProcessMessages(conversationId, consumer, conversationContext, func(message *kafkahelpers.Message) bool {
-					formattedMsg := fmt.Sprintf("data: %s\n\n", message.Message)
-					_, err := c.Write(
-						[]byte(formattedMsg),
-					)
+					_, err := fmt.Fprintf(w, "data: %s\n\n", message.Message)
 					if err != nil {
 						return false
+					}
+
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
 					}
 
 					return true
@@ -81,7 +89,7 @@ func EventsRoutes(api fiber.Router, db *sqlx.DB) {
 		}
 
 		select {
-		case <-c.Context().Done():
+		case <-w.(http.CloseNotifier).CloseNotify():
 		case <-conversationContext.Done():
 		}
 
@@ -89,9 +97,11 @@ func EventsRoutes(api fiber.Router, db *sqlx.DB) {
 		conversationGroup.Wait()
 
 		if conversationContextError.err != nil {
-			return c.Status(500).Send(nil)
+			w.WriteHeader(500)
+			return
 		}
 
-		return c.Status(200).Send(nil)
-	})
+		w.WriteHeader(200)
+		return
+	}))
 }

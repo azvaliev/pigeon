@@ -36,6 +36,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/cbroglie/mustache v1.4.0 // indirect
+	github.com/gofiber/adaptor/v2 v2.1.32
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.16.3 // indirect
