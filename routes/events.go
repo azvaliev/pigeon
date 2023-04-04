@@ -2,39 +2,134 @@ package routes
 
 import (
 	"context"
-	"fmt"
-	"net/http"
+	"encoding/json"
+	"log"
 	"sync"
 
 	"github.com/azvaliev/pigeon/v2/kafka"
 	"github.com/azvaliev/pigeon/v2/utils"
-	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 	"github.com/jmoiron/sqlx"
+	"github.com/oklog/ulid/v2"
 )
 
-func EventsRoutes(api fiber.Router, db *sqlx.DB) {
-	api.Get("/events", adaptor.HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(r.Context().Value("user-id"))
+type MessageData struct {
+	ConversationId string `json:"conversation_id" validate:"required,len=26"`
+	Message        string `json:"message" validate:"required"`
+}
 
+func EventsRoutes(api fiber.Router, db *sqlx.DB) {
+	api.Use("/events", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+
+		return fiber.ErrUpgradeRequired
+	})
+
+	api.Get("/events", websocket.New(func(c *websocket.Conn) {
 		// Determine all conversations user is part of
 		conversations := &[]utils.Conversation{}
 		err := db.Select(
 			conversations,
 			"SELECT conversation_id as id FROM ConversationMember WHERE user_id = ?",
-			r.Context().Value("user-id"),
+			c.Locals("user-id"),
 		)
 
 		if err != nil {
-			w.WriteHeader(500)
+			c.Close()
 			return
 		}
 
-		// Send SSE headers
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
+		// Create context for recieving messages to write
+		messageContext, cancelMessageContext := context.WithCancel(context.Background())
+		go func() {
+			defer cancelMessageContext()
 
+			for {
+				select {
+				case <-messageContext.Done():
+					return
+				default:
+
+					messageType, message, err := c.ReadMessage()
+					if err != nil {
+						cancelMessageContext()
+						return
+					}
+
+					if messageType == websocket.TextMessage {
+						// Parse message into JSON
+						messageData := &MessageData{}
+						err = json.Unmarshal(message, messageData)
+						if err != nil {
+							log.Printf("Error reading message \"%s\" - error %s\n", string(message), err)
+							continue
+						}
+
+						// Validate message
+						validationErrors := utils.ValidateStruct(messageData)
+						if validationErrors != nil {
+							continue
+						}
+
+						// Check if conversation exists and the user is a part of it
+						isPartOfConversation := 0
+						err = db.Get(
+							&isPartOfConversation,
+							"SELECT COUNT(*) FROM ConversationMember WHERE conversation_id = ? AND user_id = ?",
+							messageData.ConversationId,
+							c.Locals("user-id"),
+						)
+
+						if err != nil || isPartOfConversation == 0 {
+							log.Printf("User %s is not part of conversation %s\n", c.Locals("user-id"), messageData.ConversationId)
+							continue
+						}
+
+						messageId := ulid.Make().String()
+
+						// Create message
+						_, err = db.Exec(
+							"INSERT INTO Message (id, sender_id, conversation_id, message) VALUES (?, ?, ?, ?)",
+							messageId,
+							c.Locals("user-id"),
+							messageData.ConversationId,
+							messageData.Message,
+						)
+
+						if err != nil {
+							log.Printf("Failed to create message: %s\n", err)
+							continue
+						}
+
+						// Create a kafka producer
+						producer := kafkahelpers.CreateProducer(messageData.ConversationId)
+
+						// Send message to kafka
+						err = kafkahelpers.PostMessage(producer, messageContext, &kafkahelpers.Message{
+							From:    c.Locals("user-id").(string),
+							To:      messageData.ConversationId,
+							Message: messageData.Message,
+						})
+
+						producer.Close()
+
+						// Rollback message creation if failed to send to kafka
+						if err != nil {
+							_, err = db.Exec(
+								"DELETE FROM Message WHERE id = ?",
+								messageId,
+							)
+							continue
+						}
+					}
+				}
+			}
+		}()
+
+		// Create context for all conversation listening
 		conversationGroup := &sync.WaitGroup{}
 		conversationGroup.Add(len(*conversations))
 		conversationContext, cancelConversationContext := context.WithCancel(context.Background())
@@ -47,7 +142,7 @@ func EventsRoutes(api fiber.Router, db *sqlx.DB) {
 
 		defer cancelConversationContext()
 
-		// Subscribe to all conversations
+		// Listen to all conversations
 		for _, conversation := range *conversations {
 			go func(conversationId string) {
 				defer conversationGroup.Done()
@@ -63,17 +158,13 @@ func EventsRoutes(api fiber.Router, db *sqlx.DB) {
 				}
 
 				// Process conversation messages
-				err = kafkahelpers.ProcessMessages(conversationId, consumer, conversationContext, func(message *kafkahelpers.Message) bool {
-					_, err := fmt.Fprintf(w, "data: %s\n\n", message.Message)
+				err = kafkahelpers.ProcessMessages(conversationId, consumer, conversationContext, func(message *kafkahelpers.Message) error {
+					err := c.WriteMessage(websocket.TextMessage, []byte(message.Message))
 					if err != nil {
-						return false
+						return err
 					}
 
-					if f, ok := w.(http.Flusher); ok {
-						f.Flush()
-					}
-
-					return true
+					return nil
 				})
 
 				// If error occurred, cancel context and store error
@@ -89,19 +180,21 @@ func EventsRoutes(api fiber.Router, db *sqlx.DB) {
 		}
 
 		select {
-		case <-w.(http.CloseNotifier).CloseNotify():
 		case <-conversationContext.Done():
 		}
+
+		// If error occurred, log it
+		if conversationContextError.err != nil {
+			log.Printf("Error while listening to conversation: %s\n", conversationContextError.err)
+		}
+
+		// Stop recieving messages
+		cancelMessageContext()
 
 		// Wait for all conversation listening to finish
 		conversationGroup.Wait()
 
-		if conversationContextError.err != nil {
-			w.WriteHeader(500)
-			return
-		}
-
-		w.WriteHeader(200)
+		c.Close()
 		return
 	}))
 }

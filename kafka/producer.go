@@ -9,7 +9,7 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-func PostMessage(producer *kafka.Writer, message *Message) error {
+func PostMessage(producer *kafka.Writer, ctx context.Context, message *Message) error {
 	encodedMessage, err := json.Marshal(message)
 	if err != nil {
 		return err
@@ -25,7 +25,7 @@ func PostMessage(producer *kafka.Writer, message *Message) error {
 	}
 
 	// Write messages to topic (asynchronously)
-	err = producer.WriteMessages(context.Background(), kafkaMessage)
+	err = producer.WriteMessages(ctx, kafkaMessage)
 	if err != nil {
 		return err
 	}

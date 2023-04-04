@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+    <script>
+        function connectWebSocket() {
+            const output = document.getElementById('output');
+            const errorOutput = document.getElementById('errorOutput');
+            const ws = new WebSocket('ws://localhost:4872/api/events');
+
+            const form = document.querySelector('form');
+            form.addEventListener('submit', (event) => {
+              event.preventDefault();
+              const message = document.getElementById('message').value;
+              ws.send(JSON.stringify({ message, conversation_id: '01GWFX01AJTQZBWB5SEVB230B7' }));
+            });
+
+            ws.addEventListener('open', (event) => {
+                output.innerHTML += 'WebSocket connection opened<br>';
+            });
+
+            ws.addEventListener('message', (event) => {
+                output.innerHTML += 'Received message: ' + event.data + '<br>';
+            });
+
+            ws.addEventListener('error', (event) => {
+                errorOutput.innerHTML += 'WebSocket error: ' + JSON.stringify(event) + '<br>';
+            });
+
+            ws.addEventListener('close', (event) => {
+                output.innerHTML += 'WebSocket connection closed<br>';
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <button onclick="connectWebSocket()">Connect</button>
+    <h2>Output:</h2>
+    <div id="output" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;"></div>
+    <h2>Error Output:</h2>
+    <pre id="errorOutput" style="border: 1px solid #ccc; padding: 10px; color: red;"></pre>
+    <form>
+      <input type="text" id="message" placeholder="Message">
+      <button type="submit">Send</button>
+    </form>
+</body>
+</html>

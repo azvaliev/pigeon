@@ -9,8 +9,8 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// Handler function for processing messages. Return true to continue processing, false to stop processing
-type ProcessMessageHandler func(message *Message) bool
+// Handler function for processing messages. Return error to stop processing, nil to continue processing
+type ProcessMessageHandler func(message *Message) error
 
 // Decodes messages for a specific recipient and executes callback function
 // Return true from handler function to continue processing, false to stop processing
@@ -40,9 +40,9 @@ func ProcessMessages(recipientId string, reader *kafka.Reader, ctx context.Conte
 				return err
 			}
 
-			ok := messageHandler(message)
-			if ok == false {
-				return nil
+			err = messageHandler(message)
+			if err != nil {
+				return err
 			}
 		}
 	}

@@ -115,9 +115,12 @@ func main() {
 		return c.Send([]byte("Home Page"))
 	})
 
+	app.Get("/test", func(c *fiber.Ctx) error {
+		return c.Render("test", fiber.Map{})
+	})
+
 	api := app.Group("/api")
 
-	routes.MessagesRoutes(api, db)
 	routes.EventsRoutes(api, db)
 
 	log.Fatal(app.Listen(":4872"))
